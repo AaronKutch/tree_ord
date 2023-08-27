@@ -75,17 +75,35 @@ fn tuples() {
     type T3 = (COrd, COrd, COrd);
     let t3: T3 = (COrd(32), COrd(48), COrd(40));
     let mut tracker = <T3 as TreeOrd>::Tracker::new();
-    assert_eq!(t3.tree_cmp(&(COrd(32), COrd(48), COrd(40)), &mut tracker), Equal);
+    assert_eq!(
+        t3.tree_cmp(&(COrd(32), COrd(48), COrd(40)), &mut tracker),
+        Equal
+    );
     assert_eq!(get_cmp_count(), init + 3);
-    assert_eq!(t3.tree_cmp(&(COrd(32), COrd(48), COrd(99)), &mut tracker), Less);
+    assert_eq!(
+        t3.tree_cmp(&(COrd(32), COrd(48), COrd(99)), &mut tracker),
+        Less
+    );
     assert_eq!(get_cmp_count(), init + 6);
-    assert_eq!(t3.tree_cmp(&(COrd(32), COrd(48), COrd(16)), &mut tracker), Greater);
+    assert_eq!(
+        t3.tree_cmp(&(COrd(32), COrd(48), COrd(16)), &mut tracker),
+        Greater
+    );
     assert_eq!(get_cmp_count(), init + 9);
-    assert_eq!(t3.tree_cmp(&(COrd(32), COrd(48), COrd(35)), &mut tracker), Greater);
+    assert_eq!(
+        t3.tree_cmp(&(COrd(32), COrd(48), COrd(35)), &mut tracker),
+        Greater
+    );
     assert_eq!(get_cmp_count(), init + 10);
-    assert_eq!(t3.tree_cmp(&(COrd(32), COrd(48), COrd(45)), &mut tracker), Less);
+    assert_eq!(
+        t3.tree_cmp(&(COrd(32), COrd(48), COrd(45)), &mut tracker),
+        Less
+    );
     assert_eq!(get_cmp_count(), init + 11);
-    assert_eq!(t3.tree_cmp(&(COrd(32), COrd(48), COrd(40)), &mut tracker), Equal);
+    assert_eq!(
+        t3.tree_cmp(&(COrd(32), COrd(48), COrd(40)), &mut tracker),
+        Equal
+    );
     assert_eq!(get_cmp_count(), init + 12);
 }
 
@@ -114,11 +132,52 @@ fn result() {
     assert_eq!(get_cmp_count(), init + 2);
 }
 
-/*
 #[test]
 fn slices() {
     type T = Vec<COrd>;
     let t: T = vec![];
+    let init = get_cmp_count();
     let mut tracker = <T as TreeOrd>::Tracker::new();
+    assert_eq!(t.tree_cmp(&vec![], &mut tracker), Equal);
+    assert_eq!(get_cmp_count(), init);
+    assert_eq!(t.tree_cmp(&vec![COrd(0)], &mut tracker), Less);
+    assert_eq!(t.tree_cmp(&vec![], &mut tracker), Equal);
+    assert_eq!(get_cmp_count(), init);
+
+    let t: T = vec![COrd(32), COrd(48), COrd(35)];
+    let init = get_cmp_count();
+    let mut tracker = <T as TreeOrd>::Tracker::new();
+    assert_eq!(t.tree_cmp(&vec![COrd(32), COrd(0)], &mut tracker), Greater);
+    assert_eq!(get_cmp_count(), init + 2);
+    assert_eq!(
+        t.tree_cmp(&vec![COrd(32), COrd(64), COrd(0), COrd(0)], &mut tracker),
+        Less
+    );
+    assert_eq!(get_cmp_count(), init + 4);
+    assert_eq!(t.tree_cmp(&vec![COrd(32), COrd(16)], &mut tracker), Greater);
+    assert_eq!(get_cmp_count(), init + 5);
+    assert_eq!(t.tree_cmp(&vec![COrd(32), COrd(64)], &mut tracker), Less);
+    assert_eq!(get_cmp_count(), init + 6);
+    assert_eq!(t.tree_cmp(&vec![COrd(32), COrd(49)], &mut tracker), Less);
+    assert_eq!(get_cmp_count(), init + 7);
+    assert_eq!(
+        t.tree_cmp(&vec![COrd(32), COrd(47), COrd(35)], &mut tracker),
+        Greater
+    );
+    assert_eq!(get_cmp_count(), init + 8);
+    assert_eq!(
+        t.tree_cmp(&vec![COrd(32), COrd(48), COrd(35)], &mut tracker),
+        Equal
+    );
+    assert_eq!(get_cmp_count(), init + 10);
+    assert_eq!(
+        t.tree_cmp(&vec![COrd(32), COrd(48), COrd(40)], &mut tracker),
+        Less
+    );
+    assert_eq!(get_cmp_count(), init + 12);
+    assert_eq!(
+        t.tree_cmp(&vec![COrd(32), COrd(48), COrd(30)], &mut tracker),
+        Greater
+    );
+    assert_eq!(get_cmp_count(), init + 14);
 }
-*/

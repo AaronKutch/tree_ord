@@ -11,13 +11,15 @@ use core::{
         NonZeroI128, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI8, NonZeroIsize, NonZeroU128,
         NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU8, NonZeroUsize,
     },
+    ops::Deref,
+    pin::Pin,
 };
 #[cfg(feature = "alloc")]
 extern crate alloc;
 use core::{cmp::Ordering, time::Duration};
-use Ordering::*;
 
 use utils::{tree_cmp_unreachable, LexicographicTracker, ResultTracker};
+use Ordering::*;
 pub mod utils;
 
 pub trait Tracker {
@@ -83,9 +85,9 @@ impl_simple_tree_ord!(
 // TODO when stabilized in core
 //IpAddr SocketAddr Ipv4Addr Ipv6Addr SocketAddrV4 SocketAddrV6
 
-/// Wrapper that implements `TreeOrd` for any `T: Ord`. However, no `Tracker`
-/// optimizations specific to the `T` are applied, which may be important to do
-/// manually
+/// Wrapper that implements `TreeOrd` with a no-op `Tracker` for any `T: Ord`.
+/// It may be important to implement `TreeOrd` manually for large and
+/// complicated `T`.
 #[repr(transparent)]
 pub struct OrdToTreeOrd<T: Ord>(pub T);
 
@@ -156,6 +158,7 @@ impl<T: ?Sized> TreeOrd<Self> for PhantomData<T> {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl<T: TreeOrd + ?Sized> TreeOrd<Self> for alloc::boxed::Box<T> {
     type Tracker = T::Tracker;
 
@@ -165,6 +168,7 @@ impl<T: TreeOrd + ?Sized> TreeOrd<Self> for alloc::boxed::Box<T> {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl<T: TreeOrd + ?Sized> TreeOrd<Self> for alloc::rc::Rc<T> {
     type Tracker = T::Tracker;
 
@@ -174,6 +178,7 @@ impl<T: TreeOrd + ?Sized> TreeOrd<Self> for alloc::rc::Rc<T> {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl<T: TreeOrd + ?Sized> TreeOrd<Self> for alloc::sync::Arc<T> {
     type Tracker = T::Tracker;
 
@@ -184,6 +189,19 @@ impl<T: TreeOrd + ?Sized> TreeOrd<Self> for alloc::sync::Arc<T> {
 }
 
 // TODO for `Saturating` and `Wrapping` when impls become stable
+
+impl<P> TreeOrd<Self> for Pin<P>
+where
+    P: Deref,
+    <P as Deref>::Target: TreeOrd,
+{
+    type Tracker = <<P as Deref>::Target as TreeOrd>::Tracker;
+
+    #[inline]
+    fn tree_cmp(&self, rhs: &Self, tracker: &mut Self::Tracker) -> Ordering {
+        self.deref().tree_cmp(rhs.deref(), tracker)
+    }
+}
 
 impl<T: TreeOrd> TreeOrd<Self> for Option<T> {
     type Tracker = T::Tracker;
@@ -212,7 +230,7 @@ impl<T: TreeOrd, E: TreeOrd> TreeOrd<Self> for Result<T, E> {
                 } else {
                     tree_cmp_unreachable()
                 }
-            },
+            }
             (Ok(_), Err(_)) => Less,
             (Err(_), Ok(_)) => Greater,
             (Err(lhs), Err(rhs)) => {
@@ -224,7 +242,7 @@ impl<T: TreeOrd, E: TreeOrd> TreeOrd<Self> for Result<T, E> {
                 } else {
                     tree_cmp_unreachable()
                 }
-            },
+            }
         }
     }
 }
@@ -243,29 +261,60 @@ impl<T: TreeOrd> TreeOrd<Self> for [T] {
         }
         let len = end.wrapping_sub(start);
         // enable bound check elmination in the compiler
-        let lhs = &self[start..end];
-        let rhs = &rhs[start..end];
-        for i in 0..len {
-            if not_noop && (i != tracker.subtracker_i) {
+        let x = &self[start..end];
+        let y = &rhs[start..end];
+        for j in 0..len {
+            let i = j.wrapping_add(start);
+            if not_noop && (j != tracker.subtracker_i) {
                 tracker.subtracker = <T as TreeOrd>::Tracker::new();
                 tracker.subtracker_i = i;
             }
-            match lhs[i].tree_cmp(&rhs[i], &mut tracker.subtracker) {
+            match x[j].tree_cmp(&y[j], &mut tracker.subtracker) {
                 Less => {
-                    if not_noop {
-                        tracker.max_eq_len = i;
-                    }
+                    tracker.max_eq_len = i;
                     return Less
                 }
                 Equal => (),
                 Greater => {
-                    if not_noop {
-                        tracker.min_eq_len = i;
-                    }
+                    tracker.min_eq_len = i;
                     return Greater
                 }
             }
         }
         self.len().cmp(&rhs.len())
+    }
+}
+
+impl TreeOrd<Self> for str {
+    type Tracker = <[u8] as TreeOrd>::Tracker;
+
+    fn tree_cmp(&self, rhs: &Self, tracker: &mut Self::Tracker) -> Ordering {
+        self.as_bytes().tree_cmp(rhs.as_bytes(), tracker)
+    }
+}
+
+impl<T: TreeOrd, const N: usize> TreeOrd<Self> for [T; N] {
+    type Tracker = <[T] as TreeOrd>::Tracker;
+
+    fn tree_cmp(&self, rhs: &Self, tracker: &mut Self::Tracker) -> Ordering {
+        self.as_slice().tree_cmp(rhs.as_slice(), tracker)
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl<T: TreeOrd> TreeOrd<Self> for alloc::vec::Vec<T> {
+    type Tracker = <[T] as TreeOrd>::Tracker;
+
+    fn tree_cmp(&self, rhs: &Self, tracker: &mut Self::Tracker) -> Ordering {
+        self.as_slice().tree_cmp(rhs.as_slice(), tracker)
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl TreeOrd<Self> for alloc::string::String {
+    type Tracker = <[u8] as TreeOrd>::Tracker;
+
+    fn tree_cmp(&self, rhs: &Self, tracker: &mut Self::Tracker) -> Ordering {
+        self.as_bytes().tree_cmp(rhs.as_bytes(), tracker)
     }
 }
