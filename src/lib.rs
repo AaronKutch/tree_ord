@@ -40,9 +40,96 @@ impl Tracker for () {
     fn new() -> Self {}
 }
 
-/// Note: after first comparison with root node, the minimum or maximum node
-/// should be `tree_cmp`ed with in order to handle certain close to min or close
-/// to max cases
+/// An ordering trait for faster comparisons in binary tree searches
+///
+/// Consider doing a tree search over something like `Vec<u64>` or long byte
+/// arrays. In some algorithmic contexts, there is a lot of commonality between
+/// long key prefixes.
+///
+/// ```
+/// use core::cmp::Ordering;
+///
+/// use Ordering::*;
+///
+/// let v: &[u8] = &[42, 64, 8, 0, 32];
+///
+/// // Suppose we are searching down a binary tree with `v`. We encounter the following
+///
+/// assert_eq!(v.cmp(&[50, 50, 50, 50, 50]), Less);
+/// assert_eq!(v.cmp(&[42, 64, 0, 0, 0]), Greater);
+/// assert_eq!(v.cmp(&[42, 64, 99, 99, 99]), Less);
+/// assert_eq!(v.cmp(&[42, 64, 8, 50, 50]), Less);
+/// assert_eq!(v.cmp(&[42, 64, 8, 0, 16]), Greater);
+/// assert_eq!(v.cmp(&[42, 64, 8, 0, 32]), Equal);
+/// ```
+///
+/// Everytime `v` is compared with, it starts from the very beginning to find
+/// where the prefix commonality diverges. However, because we are in an ordered
+/// binary tree, every time we compare `v` with a node on the right hand side
+/// and find `v` to be `Greater` than the node, we know that we will not
+/// encounter nodes lesser than the node we just compared with. Similarly, when
+/// we encounter a `Less` case, we know that we will not encounter nodes greater
+/// than the node we just encountered. After `v.cmp(&[42, 64, 0, 0, 0]) ==
+/// Greater` and `v.cmp(&[42, 64, 99, 99, 99]) == Less`, we know that all the
+/// subtrees we can encounter will only have prefixes starting with `[42, 64]`,
+/// and thus we can skip checking that prefix for all future comparisons within
+/// the current search.
+///
+/// We need some kind of state that tracks the minimum equal prefix and maximum
+/// equal prefix, and a special comparison function that can skip the minimum of
+/// the two. This is where the `Tracker` and `TreeOrd` traits come in. The
+/// primitives and small fixed width types have no use for trackers, so their
+/// `TreeOrd` impls use `type Tracker = ();`, which is a no-operation tracker
+/// that takes up no memory. `[T]` has `type Tracker =
+/// tree_ord::utils::LexicographicTracker<T>`, which has the state to track
+/// prefixes and the tracker of a single `T` type.
+///
+/// ```
+/// use core::cmp::Ordering;
+///
+/// use tree_ord::{Tracker, TreeOrd};
+/// use Ordering::*;
+///
+/// let v: &[u8] = &[42, 64, 8, 0, 32];
+///
+/// // upon starting a new tree search, always create a new tracker
+/// let mut tracker = <[u8] as TreeOrd>::Tracker::new();
+/// assert_eq!(v.tree_cmp(&[50, 50, 50, 50, 50], &mut tracker), Less);
+/// assert_eq!(v.tree_cmp(&[42, 64, 0, 0, 0], &mut tracker), Greater);
+/// assert_eq!(v.tree_cmp(&[42, 64, 99, 99, 99], &mut tracker), Less);
+/// assert_eq!(v.tree_cmp(&[42, 64, 8, 50, 50], &mut tracker), Less);
+/// assert_eq!(v.tree_cmp(&[42, 64, 8, 0, 16], &mut tracker), Greater);
+/// assert_eq!(v.tree_cmp(&[42, 64, 8, 0, 32], &mut tracker), Equal);
+/// ```
+///
+/// In the small example above, only 7 comparisons get skipped and we added some
+/// over head, so the performance would not have actually increased, but this
+/// trait does become efficient for large equivalence graphs with large keys.
+/// Depending on your use case, you can simply use the `OrdToTreeOrd<T>` wrapper
+/// which opts out of all overhead.
+///
+/// `TreeOrd` is implemented for tuples up to length 12 that have all `TreeOrd`
+/// fields, and it internally enumerates each tracker type of each field while
+/// applying the prefix optimization to itself. For example, if we have
+/// `(Vec<u64>, U)`, and if the entire `Vec<u64>` prefix is determined, then it
+/// will only compare on `U` for following comparisons, switching to using a new
+/// `U::Tracker` for nested optimization.
+///
+/// Note: in `tree_cmp` implementations, they should not treat `Equal` as
+/// strengthening any bounds. This is because we want to handle certain
+/// nonhereditary trees and other cases where the search may continue after
+/// encountering an `Equal`. The search may find its way outside of the group of
+/// equal keys for one move and would need to be redirected, which couldn't
+/// happen if `Equal` made all future returns `Equal` or something like that.
+///
+/// Note: When using `TreeOrd` for a datastructure with fast access to the
+/// minimum and maximum keys of a tree, the minimum or maximum keys should be
+/// `tree_cmp`ed with after the root node, because if there is some bias where
+/// insertions are happening close to one edge of the tree, then the tracker
+/// can't optimize things like lots of leading zero bytes early because it needs
+/// both `Less` and `Greater` cases. In the future we may have better
+/// specializations that are aware of the absolute minimum and maximum values of
+/// `T`.
 pub trait TreeOrd<Rhs = Self>
 where
     Rhs: ?Sized,

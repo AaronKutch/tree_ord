@@ -15,3 +15,6 @@ categories = ["memory-management", "data-structures", "no-std"]
 default = ["std"]
 alloc = []
 std = ["alloc"]
+
+[dev-dependencies]
+rand_xoshiro = "0.6"

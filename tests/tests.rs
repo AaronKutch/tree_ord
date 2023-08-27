@@ -1,5 +1,6 @@
 use std::{cell::RefCell, cmp::Ordering};
 
+use rand_xoshiro::{rand_core::SeedableRng, Xoshiro128StarStar};
 use tree_ord::{Tracker, TreeOrd};
 use Ordering::*;
 
@@ -181,3 +182,15 @@ fn slices() {
     );
     assert_eq!(get_cmp_count(), init + 14);
 }
+
+/*
+#[test]
+fn nested_slices() {
+    type T = Vec<Vec<COrd>>;
+    let t: T = vec![];
+    let init = get_cmp_count();
+    let mut tracker = <T as TreeOrd>::Tracker::new();
+
+    let mut rng = Xoshiro128StarStar::seed_from_u64(0);
+}
+*/
