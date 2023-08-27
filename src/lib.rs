@@ -18,7 +18,7 @@ use core::{
 extern crate alloc;
 use core::{cmp::Ordering, time::Duration};
 
-use utils::{tree_cmp_unreachable, LexicographicTracker, ResultTracker};
+use utils::{LexicographicTracker, ResultTracker};
 use Ordering::*;
 pub mod utils;
 
@@ -109,11 +109,11 @@ impl Tracker for () {
 /// which opts out of all overhead.
 ///
 /// `TreeOrd` is implemented for tuples up to length 12 that have all `TreeOrd`
-/// fields, and it internally enumerates each tracker type of each field while
-/// applying the prefix optimization to itself. For example, if we have
-/// `(Vec<u64>, U)`, and if the entire `Vec<u64>` prefix is determined, then it
-/// will only compare on `U` for following comparisons, switching to using a new
-/// `U::Tracker` for nested optimization.
+/// fields, and it has subtrackers for each type of field while applying the
+/// prefix optimization to itself. For example, if we have `(A, B, C)`, it will
+/// start with `<A as TreeOrd>::Tracker`. If the entire `A` prefix is
+/// determined, then it will only compare starting from `B` and `<B as
+/// TreeOrd>::Tracker`, etc.
 ///
 /// Note: in `tree_cmp` implementations, they should not treat `Equal` as
 /// strengthening any bounds. This is because we want to handle certain
@@ -121,6 +121,8 @@ impl Tracker for () {
 /// encountering an `Equal`. The search may find its way outside of the group of
 /// equal keys for one move and would need to be redirected, which couldn't
 /// happen if `Equal` made all future returns `Equal` or something like that.
+/// Additionally, the last comparison of any valid series of comparisons is
+/// allowed to be repeated any number of times.
 ///
 /// Note: When using `TreeOrd` for a datastructure with fast access to the
 /// minimum and maximum keys of a tree, the minimum or maximum keys should be
@@ -132,6 +134,7 @@ impl Tracker for () {
 /// `T`.
 pub trait TreeOrd<Rhs = Self>
 where
+    Self: Ord,
     Rhs: ?Sized,
 {
     type Tracker: Tracker;
@@ -175,6 +178,7 @@ impl_simple_tree_ord!(
 /// Wrapper that implements `TreeOrd` with a no-op `Tracker` for any `T: Ord`.
 /// It may be important to implement `TreeOrd` manually for large and
 /// complicated `T`.
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct OrdToTreeOrd<T: Ord>(pub T);
 
@@ -188,6 +192,7 @@ impl<T: Ord> TreeOrd<Self> for OrdToTreeOrd<T> {
 }
 
 /// Like [core::cmp::Reverse] except for `TreeOrd`
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct TreeOrdReverse<T: TreeOrd>(pub T);
 
@@ -308,28 +313,10 @@ impl<T: TreeOrd, E: TreeOrd> TreeOrd<Self> for Result<T, E> {
 
     fn tree_cmp(&self, rhs: &Self, tracker: &mut Self::Tracker) -> Ordering {
         match (self, rhs) {
-            (Ok(lhs), Ok(rhs)) => {
-                if !matches!(tracker, ResultTracker::T(_)) {
-                    *tracker = ResultTracker::T(<T as TreeOrd>::Tracker::new());
-                }
-                if let ResultTracker::T(subtracker) = tracker {
-                    lhs.tree_cmp(rhs, subtracker)
-                } else {
-                    tree_cmp_unreachable()
-                }
-            }
+            (Ok(lhs), Ok(rhs)) => lhs.tree_cmp(rhs, &mut tracker.t),
             (Ok(_), Err(_)) => Less,
             (Err(_), Ok(_)) => Greater,
-            (Err(lhs), Err(rhs)) => {
-                if !matches!(tracker, ResultTracker::E(_)) {
-                    *tracker = ResultTracker::E(<E as TreeOrd>::Tracker::new());
-                }
-                if let ResultTracker::E(subtracker) = tracker {
-                    lhs.tree_cmp(rhs, subtracker)
-                } else {
-                    tree_cmp_unreachable()
-                }
-            }
+            (Err(lhs), Err(rhs)) => lhs.tree_cmp(rhs, &mut tracker.e),
         }
     }
 }
