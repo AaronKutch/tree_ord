@@ -453,9 +453,11 @@ impl<'a> TreeOrd<Self> for TreeOrdBytes<'a> {
 }
 
 /// The same as `TreeOrdBytes` but for an owned `Vec<u8>`
+#[cfg(feature = "alloc")]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct TreeOrdVec(pub Vec<u8>);
+pub struct TreeOrdVec(pub alloc::vec::Vec<u8>);
 
+#[cfg(feature = "alloc")]
 impl TreeOrd<Self> for TreeOrdVec {
     type Tracker = LexicographicTracker<u8>;
 
