@@ -14,7 +14,7 @@ pub fn tree_cmp_unreachable() -> ! {
 /// Used by the trackers of things such as slices
 pub struct LexicographicTracker<T: TreeOrd> {
     /// Stores a `Tracker` for individual elements
-    pub subtracker: T::Tracker,
+    pub subtracker: <T as TreeOrd>::Tracker,
     /// Element to which `subtracker` corresponds
     pub subtracker_i: usize,
     /// Length of lower bounding prefix
@@ -24,7 +24,7 @@ pub struct LexicographicTracker<T: TreeOrd> {
 }
 
 impl<T: TreeOrd> Tracker for LexicographicTracker<T> {
-    const IS_NOOP: bool = <T as TreeOrd>::Tracker::IS_NOOP;
+    const IS_NOOP: bool = false;
 
     fn new() -> Self {
         LexicographicTracker {
@@ -58,7 +58,7 @@ macro_rules! tuple_recast {
         pub struct $tracker_name<$($t: TreeOrd,)+> {
             pub min_eq_len: u8,
             pub max_eq_len: u8,
-            $($s: <$t as TreeOrd>::Tracker,)+
+            $(pub $s: <$t as TreeOrd>::Tracker,)+
         }
 
         impl<$($t: TreeOrd,)+> Tracker for $tracker_name<$($t,)+> {

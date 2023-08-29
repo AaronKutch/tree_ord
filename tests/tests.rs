@@ -1,8 +1,17 @@
+#![allow(clippy::needless_range_loop)]
+
 use std::{cell::RefCell, cmp::Ordering};
 
-use rand_xoshiro::{rand_core::SeedableRng, Xoshiro128StarStar};
+use rand_xoshiro::{
+    rand_core::{RngCore, SeedableRng},
+    Xoshiro128StarStar,
+};
 use tree_ord::{Tracker, TreeOrd};
 use Ordering::*;
+
+const N: u64 = 1 << 15; //1 << 16;
+const N0: u64 = 4;
+const N1: u64 = 1 << 5;
 
 thread_local! {
     pub static CMP_COUNT: RefCell<u64> = RefCell::new(0);
@@ -19,7 +28,7 @@ pub fn inc_cmp_count() {
     })
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct COrd(u64);
 
 #[allow(clippy::incorrect_partial_ord_impl_on_ord_type)]
@@ -306,14 +315,55 @@ fn nested_tuple() {
     assert_eq!(get_cmp_count(), init + 9);
 }
 
-/*
+fn gen_nested_vecs() -> Vec<Vec<Vec<COrd>>> {
+    let mut rng = Xoshiro128StarStar::seed_from_u64(0);
+    type T = Vec<Vec<COrd>>;
+    let mut res: Vec<Vec<Vec<COrd>>> = vec![];
+    for _ in 0..N {
+        let mut t0: T = vec![];
+        for _ in 0..N0 {
+            let len = (rng.next_u64() % N1) as usize;
+            let mut t1 = vec![];
+            for _ in 0..len {
+                t1.push(COrd(0));
+            }
+            if len != 0 {
+                for i in 0..((rng.next_u64() as usize) % len) {
+                    t1[i] = COrd(4);
+                }
+                t1.rotate_left((rng.next_u64() as usize) % len);
+                for i in 0..((rng.next_u64() as usize) % len) {
+                    t1[i] = COrd(8);
+                }
+                t1.rotate_left((rng.next_u64() as usize) % len);
+            }
+            t0.push(t1);
+        }
+        res.push(t0);
+    }
+    res.sort();
+    res
+}
+
 #[test]
 fn nested_slices() {
     type T = Vec<Vec<COrd>>;
-    let t: T = vec![];
-    let init = get_cmp_count();
-    let mut tracker = <T as TreeOrd>::Tracker::new();
+    let mut tree_comparisons = 0;
+    let mut comparisons = 0;
+    let space = gen_nested_vecs();
+    let inxs = space.clone();
+    for rhs in &inxs {
+        let init = get_cmp_count();
+        let mut tracker = <T as TreeOrd>::Tracker::new();
+        let found = space
+            .binary_search_by(|lhs| lhs.tree_cmp(rhs, &mut tracker))
+            .unwrap();
+        tree_comparisons += get_cmp_count() - init;
 
-    let mut rng = Xoshiro128StarStar::seed_from_u64(0);
+        let init = get_cmp_count();
+        let expected = space.binary_search_by(|lhs| lhs.cmp(rhs)).unwrap();
+        comparisons += get_cmp_count() - init;
+        assert_eq!(found, expected);
+    }
+    assert_eq!((tree_comparisons, comparisons), (3396610, 5301800));
 }
-*/

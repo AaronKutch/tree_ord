@@ -22,9 +22,10 @@ use utils::{LexicographicTracker, ResultTracker};
 use Ordering::*;
 pub mod utils;
 
+/// A trait for structs used in `TreeOrd` impls to store prefix information
 pub trait Tracker {
     /// Indicates if the `Tracker` is a no-op that does no prefix tracking or
-    /// anything to help `TreeOrd` with. This is used by `TreeOrd` impls to
+    /// anything to help `TreeOrd` with. This can be used by `TreeOrd` impls to
     /// avoid some branches. Generic types can use things like `const IS_NOOP:
     /// bool = <T as TreeOrd>::Tracker::IS_NOOP;` depending on if they have any
     /// tracking state themselves or not.
@@ -327,7 +328,7 @@ impl<T: TreeOrd> TreeOrd<Self> for [T] {
     fn tree_cmp(&self, rhs: &Self, tracker: &mut Self::Tracker) -> Ordering {
         // use this, because otherwise the compiler would not optimize stuff away since
         // `tracker` is an external thing to the function
-        let not_noop = !Self::Tracker::IS_NOOP;
+        let not_noop = !<T as TreeOrd>::Tracker::IS_NOOP;
         let start = min(tracker.min_eq_len, tracker.max_eq_len);
         let end = min(self.len(), rhs.len());
         if start >= end {
@@ -337,13 +338,20 @@ impl<T: TreeOrd> TreeOrd<Self> for [T] {
         // enable bound check elmination in the compiler
         let x = &self[start..end];
         let y = &rhs[start..end];
-        for j in 0..len {
+        // unroll first iter to handle subtracker which tracks only the `start` element
+        let i = start;
+        if not_noop && (i != tracker.subtracker_i) {
+            tracker.subtracker = <T as TreeOrd>::Tracker::new();
+            tracker.subtracker_i = i;
+        }
+        match x[0].tree_cmp(&y[0], &mut tracker.subtracker) {
+            Less => return Less,
+            Equal => (),
+            Greater => return Greater,
+        }
+        for j in 1..len {
             let i = j.wrapping_add(start);
-            if not_noop && (j != tracker.subtracker_i) {
-                tracker.subtracker = <T as TreeOrd>::Tracker::new();
-                tracker.subtracker_i = i;
-            }
-            match x[j].tree_cmp(&y[j], &mut tracker.subtracker) {
+            match x[j].cmp(&y[j]) {
                 Less => {
                     tracker.max_eq_len = i;
                     return Less
