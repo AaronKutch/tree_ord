@@ -6,14 +6,14 @@ use rand_xoshiro::{
     rand_core::{RngCore, SeedableRng},
     Xoshiro128StarStar,
 };
-use tree_ord::{Tracker, TreeOrd};
+use tree_ord::{Tracker, TreeOrd, TreeOrdBytes, TreeOrdVec};
 use Ordering::*;
 
 const N: u64 = 1 << 15; //1 << 16;
 const N0: u64 = 4;
 const N1: u64 = 1 << 5;
 const M: u64 = 1 << 16;
-const M1: u64 = 1 << 7;
+const M1: u64 = 1 << 9;
 
 thread_local! {
     pub static CMP_COUNT: RefCell<u64> = RefCell::new(0);
@@ -395,13 +395,14 @@ fn gen_bytes() -> Vec<Vec<u8>> {
 
 #[test]
 fn bytes() {
-    type T = Vec<u8>;
     let space = gen_bytes();
     let inxs = space.clone();
     for rhs in &inxs {
-        let mut tracker = <T as TreeOrd>::Tracker::new();
-        space
-            .binary_search_by(|lhs| lhs.tree_cmp(rhs, &mut tracker))
+        let mut tracker = <TreeOrdVec as TreeOrd>::Tracker::new();
+        let found = space
+            .binary_search_by(|lhs| TreeOrdBytes(lhs).tree_cmp(&TreeOrdBytes(rhs), &mut tracker))
             .unwrap();
+        let expected = space.binary_search_by(|lhs| lhs.cmp(rhs)).unwrap();
+        assert_eq!(found, expected);
     }
 }

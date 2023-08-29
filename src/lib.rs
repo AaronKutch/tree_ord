@@ -400,3 +400,67 @@ impl TreeOrd<Self> for alloc::string::String {
         self.as_bytes().tree_cmp(rhs.as_bytes(), tracker)
     }
 }
+
+/// The generic `[T]` impl is not performant for `[u8]`. We can't specialize the
+/// `[T]` impl on stable, so this exists to compare bytes in chunks of bytes.
+/// However, it seems this is only more performant for very long slices and deep
+/// trees, you should benchmark to see if this is faster for your usecase.
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct TreeOrdBytes<'a>(pub &'a [u8]);
+
+impl<'a> TreeOrd<Self> for TreeOrdBytes<'a> {
+    type Tracker = LexicographicTracker<u8>;
+
+    #[inline]
+    fn tree_cmp(&self, rhs: &Self, tracker: &mut Self::Tracker) -> Ordering {
+        // byte comparison is greatly sped up internally by
+        // `core::intrinsics::compare_bytes` when we do it in chunks
+        const CHUNK_LEN: usize = 32;
+        let start_chunks = min(tracker.min_eq_len, tracker.max_eq_len);
+        let start_bytes = start_chunks.wrapping_mul(CHUNK_LEN);
+        let end_bytes = min(self.0.len(), rhs.0.len());
+        let end_chunks = end_bytes.wrapping_div(CHUNK_LEN);
+        if start_chunks >= end_chunks {
+            if start_bytes >= end_bytes {
+                return self.0.len().cmp(&rhs.0.len())
+            } else {
+                let x = &self.0[start_bytes..];
+                let y = &rhs.0[start_bytes..];
+                return x.cmp(y)
+            }
+        }
+        let len_chunks = end_chunks.wrapping_sub(start_chunks);
+        for i in 0..len_chunks {
+            let start = start_chunks.wrapping_add(i).wrapping_mul(CHUNK_LEN);
+            let end = start.wrapping_add(CHUNK_LEN);
+            let x = &self.0[start..end];
+            let y = &rhs.0[start..end];
+            match x.cmp(y) {
+                Less => {
+                    tracker.max_eq_len = i;
+                    return Less
+                }
+                Equal => (),
+                Greater => {
+                    tracker.min_eq_len = i;
+                    return Greater
+                }
+            }
+        }
+        let extra_start = end_chunks.wrapping_mul(CHUNK_LEN);
+        self.0[extra_start..].cmp(&rhs.0[extra_start..])
+    }
+}
+
+/// The same as `TreeOrdBytes` but for an owned `Vec<u8>`
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct TreeOrdVec(pub Vec<u8>);
+
+impl TreeOrd<Self> for TreeOrdVec {
+    type Tracker = LexicographicTracker<u8>;
+
+    #[inline]
+    fn tree_cmp(&self, rhs: &Self, tracker: &mut Self::Tracker) -> Ordering {
+        TreeOrdBytes(&self.0).tree_cmp(&TreeOrdBytes(&rhs.0), tracker)
+    }
+}

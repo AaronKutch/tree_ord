@@ -22,6 +22,7 @@ jobs:
           cargo build --no-default-features --features=alloc
           cargo build --no-default-features --features=std
           cargo test
+          cargo bench
 
   rustfmt:
     name: Rustfmt
