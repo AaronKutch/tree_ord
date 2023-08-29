@@ -12,6 +12,8 @@ use Ordering::*;
 const N: u64 = 1 << 15; //1 << 16;
 const N0: u64 = 4;
 const N1: u64 = 1 << 5;
+const M: u64 = 1 << 16;
+const M1: u64 = 1 << 7;
 
 thread_local! {
     pub static CMP_COUNT: RefCell<u64> = RefCell::new(0);
@@ -366,4 +368,40 @@ fn nested_slices() {
         assert_eq!(found, expected);
     }
     assert_eq!((tree_comparisons, comparisons), (3396610, 5301800));
+}
+
+fn gen_bytes() -> Vec<Vec<u8>> {
+    let mut rng = Xoshiro128StarStar::seed_from_u64(0);
+    type T = Vec<u8>;
+    let mut res: Vec<Vec<u8>> = vec![];
+    for _ in 0..M {
+        let len = (rng.next_u64() % M1) as usize;
+        let mut t0: T = vec![0; len];
+        if len != 0 {
+            for i in 0..((rng.next_u64() as usize) % len) {
+                t0[i] = 128;
+            }
+            t0.rotate_left((rng.next_u64() as usize) % len);
+            for i in 0..((rng.next_u64() as usize) % len) {
+                t0[i] = 255;
+            }
+            t0.rotate_left((rng.next_u64() as usize) % len);
+        }
+        res.push(t0);
+    }
+    res.sort();
+    res
+}
+
+#[test]
+fn bytes() {
+    type T = Vec<u8>;
+    let space = gen_bytes();
+    let inxs = space.clone();
+    for rhs in &inxs {
+        let mut tracker = <T as TreeOrd>::Tracker::new();
+        space
+            .binary_search_by(|lhs| lhs.tree_cmp(rhs, &mut tracker))
+            .unwrap();
+    }
 }
