@@ -8,8 +8,8 @@ readme = "README.md"
 repository = "https://github.com/AaronKutch/tree_ord"
 documentation = "https://docs.rs/tree_ord"
 description = "An ordering that skips prefixes in tree searches"
-keywords = ["recast", "translate", "no_std"]
-categories = ["memory-management", "data-structures", "no-std"]
+keywords = ["prefix", "tree", "ord", "no_std"]
+categories = ["no-std"]
 
 [features]
 default = ["std"]
